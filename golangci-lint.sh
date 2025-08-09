@@ -256,8 +256,16 @@ merge_configs() {
             exit 1
         fi
         log_info "Found local configuration: ${local_config}"
-        yq eval-all 'select(fileIndex == 0) * select(fileIndex == 1)' \
-            "${GOLANGCI_BASE_CONFIG}" "${local_config}" > "${final_config}"
+        
+        # Check if local config contains any YAML content
+        if [[ "$(yq eval 'length > 0' "${local_config}" 2>/dev/null || echo "false")" == "true" ]]; then
+            log_info "Local configuration contains data, merging with base configuration"
+            yq eval-all 'select(fileIndex == 0) * select(fileIndex == 1)' \
+                "${GOLANGCI_BASE_CONFIG}" "${local_config}" > "${final_config}"
+        else
+            log_warn "Local configuration is empty, using only base configuration"
+            cp "${GOLANGCI_BASE_CONFIG}" "${final_config}"
+        fi
     fi
     
     # Add generation notice to the top
