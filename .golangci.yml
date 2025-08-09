@@ -71,13 +71,11 @@ linters:
       simplify: true
       
     goimports:
-      local-prefixes: "github.com/truewebber/truerpc-landing"
       
     gci:
       sections:
         - standard
         - default
-        - prefix(github.com/truewebber/truerpc-landing)
         - blank
         - dot
       skip-generated: true
