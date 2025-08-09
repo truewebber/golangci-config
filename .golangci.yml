@@ -1,0 +1,242 @@
+# This extends the shared truewebber configuration
+version: "2"
+
+# Options for analysis running
+run:
+  tests: true
+  timeout: 10m
+  issues-exit-code: 1
+  modules-download-mode: readonly
+  allow-parallel-runners: false
+  allow-serial-runners: false
+  go: "1.23"
+
+# Output configuration options
+output:
+  print-issued-lines: true
+  print-linter-name: true
+  uniq-by-line: true
+  path-prefix: ""
+  sort-results: true
+
+# Linters configuration
+linters:
+  # Enable all linters by default for maximum strictness
+  default: all
+  
+  # Only disable truly problematic ones
+  disable:
+    # Not helpful for most codebases
+    - varnamelen      # Variable name length restrictions too strict
+    - exhaustruct     # Requires all struct fields to be set
+    - ireturn         # Interface return restrictions too strict
+    - tagliatelle     # Tag format restrictions
+    - depguard        # Import restrictions (configure if needed)
+    - wsl             # Whitespace requirements too strict
+    - perfsprint      # Don't force errors.New over fmt.Errorf
+    - goheader        # File header comments (not needed for most projects)
+
+  # All linter settings with maximum strictness
+  settings:
+    stylecheck:
+      checks: ["all"]
+      
+    nolintlint:
+      allow-unused: false
+      require-explanation: true
+      require-specific: true
+      
+    staticcheck:
+      checks: ["all", "-ST1000"]  # All checks except package comments
+      
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+      exclude-functions:
+        - "fmt.Print*"
+        - "fmt.Fprint*"
+      
+    funlen:
+      lines: 55
+      statements: 30
+      ignore-comments: false
+      
+    govet:
+      enable-all: true
+      settings:
+        shadow:
+          strict: true
+          
+    gofmt:
+      simplify: true
+      
+    goimports:
+      local-prefixes: "github.com/truewebber/truerpc-landing"
+      
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/truewebber/truerpc-landing)
+        - blank
+        - dot
+      skip-generated: true
+      
+    gocyclo:
+      min-complexity: 15
+      
+    gocognit:
+      min-complexity: 15
+      
+    dupl:
+      threshold: 100
+      
+    goconst:
+      min-len: 3
+      min-occurrences: 2
+      match-constant: true
+      numbers: true
+      
+    misspell:
+      locale: "US"
+      ignore-words: []
+      
+    lll:
+      line-length: 120
+      tab-width: 1
+      
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style  
+        - performance
+        - experimental
+        - opinionated
+      disabled-checks:
+        - whyNoLint
+      settings:
+        captLocal:
+          paramsOnly: true
+        rangeValCopy:
+          sizeThreshold: 64
+        underef:
+          skipRecvDeref: false
+          
+    gosec:
+      severity: "medium"
+      confidence: "medium"
+      excludes: []
+      
+    nakedret:
+      max-func-lines: 30
+      
+    prealloc:
+      simple: false
+      range-loops: true
+      for-loops: true
+      
+    unparam:
+      check-exported: true
+      
+    unused:
+      field-writes-are-uses: true
+      post-statements-are-reads: true
+      exported-is-used: true
+      exported-fields-are-used: true
+      parameters-are-used: true
+      local-variables-are-used: true
+      generated-is-used: true
+      
+    gomodguard:
+      blocked:
+        modules: []
+        versions: []
+        local_replace_directives: false
+        
+    godox:
+      keywords:
+        - "TODO"
+        - "FIXME" 
+        - "HACK"
+        - "BUG"
+        - "XXX"
+        
+    revive:
+      confidence: 0.8
+      severity: "warning"
+      rules:
+        # Code style and logic (keep these)
+        - name: "blank-imports"
+        - name: "context-as-argument"
+        - name: "context-keys-type" 
+        - name: "dot-imports"
+        - name: "error-return"
+        - name: "error-strings"
+        - name: "error-naming"
+        - name: "if-return"
+        - name: "increment-decrement"
+        - name: "var-naming"
+        - name: "var-declaration"
+        - name: "range"
+        - name: "receiver-naming"
+        - name: "time-naming"
+        - name: "unexported-return"
+        - name: "indent-error-flow"
+        - name: "errorf"
+        - name: "empty-block"
+        - name: "superfluous-else"
+        - name: "unused-parameter"
+        - name: "unreachable-code"
+        - name: "redefines-builtin-id"
+        # Comment-related rules disabled:
+        # - name: "exported"          # Comments for exported functions
+        # - name: "package-comments"  # Package comments
+
+# Issues configuration
+issues:
+  max-issues-per-linter: 0  # No limit - show all issues
+  max-same-issues: 0        # No limit - show all identical issues
+  new-from-rev: ""          # Show all issues, not just new ones
+  fix: false
+  
+  exclude-use-default: false  # Don't use default excludes - be strict
+  exclude-case-sensitive: true
+  
+  exclude-rules:
+    # Test file exceptions (keep your existing rules)
+    - path: "_test\\.go"
+      linters:
+        - funlen          # Table tests can be long
+        - lll             # Test data can have long lines  
+        - wsl             # Auto-generated tests may have cuddled assignments
+        - govet           # Tests may use reflect.DeepEqual
+        - goerr113        # Tests may have inline errors
+        - containedctx    # Test structs may contain context
+        - maintidx        # Tests can be complex
+        - dupl            # Test cases can be similar
+        - gocyclo         # Test functions can be complex
+        - gocognit        # Test functions can be cognitively complex
+        - cyclop          # Test functions can be complex
+
+    # White-box testing exceptions
+    - path: "_internal_test\\.go"
+      linters:
+        - testpackage
+
+    # Generated code exceptions
+    - linters:
+        - lll
+        - goimports
+        - gofmt
+      source: "^//go:generate "
+      
+    # Ignore long lines in comments with URLs
+    - linters:
+        - lll
+      source: "^\\s*//.*http"
+
+# Severity configuration - maximum strictness  
+severity:
+  default: "error"  # All issues are errors by default
+  case-sensitive: true
+  rules: []
