@@ -13,11 +13,14 @@ run:
 
 # Output configuration options
 output:
-  print-issued-lines: true
-  print-linter-name: true
-  uniq-by-line: true
+  formats:
+    text:
+      print-issued-lines: true
+      print-linter-name: true
+  sort-order:
+    - file
+    - linter
   path-prefix: ""
-  sort-results: true
 
 # Linters configuration
 linters:
@@ -39,9 +42,6 @@ linters:
 
   # All linter settings with maximum strictness
   settings:
-    stylecheck:
-      checks: ["all"]
-      
     nolintlint:
       allow-unused: false
       require-explanation: true
@@ -67,20 +67,7 @@ linters:
       settings:
         shadow:
           strict: true
-          
-    gofmt:
-      simplify: true
-      
-    goimports:
-      
-    gci:
-      sections:
-        - standard
-        - default
-        - blank
-        - dot
-      skip-generated: true
-      
+
     gocyclo:
       min-complexity: 15
       
@@ -98,7 +85,7 @@ linters:
       
     misspell:
       locale: "US"
-      ignore-words: []
+      ignore-rules: []
       
     lll:
       line-length: 120
@@ -140,7 +127,6 @@ linters:
     unused:
       field-writes-are-uses: true
       post-statements-are-reads: true
-      exported-is-used: true
       exported-fields-are-used: true
       parameters-are-used: true
       local-variables-are-used: true
@@ -150,7 +136,7 @@ linters:
       blocked:
         modules: []
         versions: []
-        local_replace_directives: false
+        local-replace-directives: false
         
     godox:
       keywords:
@@ -191,51 +177,50 @@ linters:
         # - name: "exported"          # Comments for exported functions
         # - name: "package-comments"  # Package comments
 
+  exclusions:
+    generated: strict
+
+    rules:
+      # Test file exceptions (keep your existing rules)
+      - path: "_test\\.go"
+        linters:
+          - funlen          # Table tests can be long
+          - lll             # Test data can have long lines
+          - wsl             # Auto-generated tests may have cuddled assignments
+          - govet           # Tests may use reflect.DeepEqual
+          - goerr113        # Tests may have inline errors
+          - containedctx    # Test structs may contain context
+          - maintidx        # Tests can be complex
+          - dupl            # Test cases can be similar
+          - gocyclo         # Test functions can be complex
+          - gocognit        # Test functions can be cognitively complex
+          - cyclop          # Test functions can be complex
+
+      # White-box testing exceptions
+      - path: "_internal_test\\.go"
+        linters:
+          - testpackage
+
+      # Generated code exceptions
+      - linters:
+          - lll
+          - goimports
+          - gofmt
+        source: "^//go:generate "
+
+      # Ignore long lines in comments with URLs
+      - linters:
+          - lll
+        source: "^\\s*//.*http"
+
 # Issues configuration
 issues:
   max-issues-per-linter: 0  # No limit - show all issues
   max-same-issues: 0        # No limit - show all identical issues
   new-from-rev: ""          # Show all issues, not just new ones
   fix: false
-  
-  exclude-use-default: false  # Don't use default excludes - be strict
-  exclude-case-sensitive: true
-  
-  exclude-rules:
-    # Test file exceptions (keep your existing rules)
-    - path: "_test\\.go"
-      linters:
-        - funlen          # Table tests can be long
-        - lll             # Test data can have long lines  
-        - wsl             # Auto-generated tests may have cuddled assignments
-        - govet           # Tests may use reflect.DeepEqual
-        - goerr113        # Tests may have inline errors
-        - containedctx    # Test structs may contain context
-        - maintidx        # Tests can be complex
-        - dupl            # Test cases can be similar
-        - gocyclo         # Test functions can be complex
-        - gocognit        # Test functions can be cognitively complex
-        - cyclop          # Test functions can be complex
-
-    # White-box testing exceptions
-    - path: "_internal_test\\.go"
-      linters:
-        - testpackage
-
-    # Generated code exceptions
-    - linters:
-        - lll
-        - goimports
-        - gofmt
-      source: "^//go:generate "
-      
-    # Ignore long lines in comments with URLs
-    - linters:
-        - lll
-      source: "^\\s*//.*http"
 
 # Severity configuration - maximum strictness  
 severity:
   default: "error"  # All issues are errors by default
-  case-sensitive: true
   rules: []
