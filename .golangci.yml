@@ -35,6 +35,7 @@ linters:
     - wsl             # Whitespace requirements too strict
     - perfsprint      # Don't force errors.New over fmt.Errorf
     - goheader        # File header comments (not needed for most projects)
+    - noinlineerr     # Inline error handling is idiomatic Go pattern
 
   # All linter settings with maximum strictness
   settings:
