@@ -334,31 +334,32 @@ update_config() {
     fi
 }
 
-# Global array for storing modified arguments (bash 3.2 compatible)
-declare -a FINAL_ARGS
-
-# Remove config arguments from command line and add our generated config
-modify_args_for_execution() {
+# Build final arguments string, removing config options and adding our generated config
+build_final_args() {
     local args=("$@")
-    FINAL_ARGS=()
+    local final_args=()
     local i=0
     
     while [[ $i -lt ${#args[@]} ]]; do
         case "${args[$i]}" in
             -c)
                 # Skip -c and its value
-                ((i++)) # Skip the config file argument
+                if [[ $((i + 1)) -lt ${#args[@]} ]]; then
+                    ((i++)) # Skip the config file argument
+                fi
                 ;;
             --config)
                 # Skip --config and its value
-                ((i++)) # Skip the config file argument
+                if [[ $((i + 1)) -lt ${#args[@]} ]]; then
+                    ((i++)) # Skip the config file argument
+                fi
                 ;;
             --config=*)
                 # Skip --config=value
                 ;;
             *)
                 # Keep this argument
-                FINAL_ARGS+=("${args[$i]}")
+                final_args+=("${args[$i]}")
                 ;;
         esac
         ((i++))
@@ -367,7 +368,10 @@ modify_args_for_execution() {
     # Add our generated config
     local final_config
     final_config="$(get_generated_config_path "${args[@]}")"
-    FINAL_ARGS+=("--config" "${final_config}")
+    final_args+=("--config" "${final_config}")
+    
+    # Output all arguments, one per line for safe parsing
+    printf '%s\n' "${final_args[@]}"
 }
 
 # Clean up generated files and cache
@@ -445,12 +449,19 @@ main() {
         update_config "$@"
     fi
     
-    # Modify arguments for execution (replace -c/--config with our generated config)
-    modify_args_for_execution "$@"
+    # Build final arguments (replace -c/--config with our generated config)
+    local final_args_output
+    final_args_output=$(build_final_args "$@")
+    
+    # Convert output to array (bash 3.2+ compatible)
+    local final_args=()
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && final_args+=("$line")
+    done <<< "$final_args_output"
     
     # Run golangci-lint in current directory with modified arguments
-    log_info "Running golangci-lint ${FINAL_ARGS[*]}"
-    exec golangci-lint "${FINAL_ARGS[@]}"
+    log_info "Running golangci-lint ${final_args[*]}"
+    exec golangci-lint "${final_args[@]}"
 }
 
 # Run main function with all arguments
