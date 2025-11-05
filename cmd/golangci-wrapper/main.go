@@ -201,15 +201,23 @@ func fetchRemoteConfig(url string) (interface{}, error) {
 }
 
 func downloadRemoteConfig(url string) ([]byte, error) {
-	cachePath, err := cachePathForURL(url)
+	cacheBase, err := cacheBasePathForURL(url)
 	if err != nil {
 		return nil, err
 	}
+	cachePath := cacheBase + ".yml"
+	etagPath := cacheBase + ".etag"
 
 	client := &http.Client{Timeout: defaultHTTPTimeout}
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	if etag, err := os.ReadFile(etagPath); err == nil {
+		if trimmed := strings.TrimSpace(string(etag)); trimmed != "" {
+			req.Header.Set("If-None-Match", trimmed)
+		}
 	}
 
 	resp, err := client.Do(req)
@@ -226,6 +234,15 @@ func downloadRemoteConfig(url string) ([]byte, error) {
 		}
 		if err := ensureCacheDir(); err == nil {
 			_ = os.WriteFile(cachePath, body, 0o644)
+			if newETag := strings.TrimSpace(resp.Header.Get("ETag")); newETag != "" {
+				_ = os.WriteFile(etagPath, []byte(newETag), 0o644)
+			}
+		}
+		return body, nil
+	case http.StatusNotModified:
+		body, err := os.ReadFile(cachePath)
+		if err != nil {
+			return nil, fmt.Errorf("remote responded 304 but cache is unavailable: %w", err)
 		}
 		return body, nil
 	default:
@@ -259,13 +276,13 @@ func cacheDir() (string, error) {
 	return filepath.Join(home, cacheDirectoryName), nil
 }
 
-func cachePathForURL(url string) (string, error) {
+func cacheBasePathForURL(url string) (string, error) {
 	dir, err := cacheDir()
 	if err != nil {
 		return "", err
 	}
 	hash := sha256.Sum256([]byte(url))
-	name := hex.EncodeToString(hash[:]) + ".yml"
+	name := hex.EncodeToString(hash[:])
 	return filepath.Join(dir, name), nil
 }
 
@@ -362,6 +379,10 @@ func generatedConfigPath(localConfig string) string {
 }
 
 func writeGeneratedConfig(path string, content interface{}, remoteURL, localConfig string) error {
+	if err := cleanupOldGeneratedConfigs(path); err != nil {
+		return err
+	}
+
 	yamlBytes, err := yaml.Marshal(content)
 	if err != nil {
 		return fmt.Errorf("encode merged configuration: %w", err)
@@ -430,4 +451,37 @@ func runGolangciLint(args []string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+func cleanupOldGeneratedConfigs(current string) error {
+	absCurrent, err := filepath.Abs(current)
+	if err != nil {
+		return fmt.Errorf("resolve generated config path: %w", err)
+	}
+
+	return filepath.WalkDir(".", func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if filepath.Base(path) != generatedFileName {
+			return nil
+		}
+
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			return err
+		}
+		if absPath == absCurrent {
+			return nil
+		}
+
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("remove old generated config %s: %w", path, err)
+		}
+		fmt.Fprintf(os.Stderr, "[INFO] Removed old generated config: %s\n", path)
+		return nil
+	})
 }
