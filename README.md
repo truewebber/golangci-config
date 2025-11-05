@@ -1,90 +1,64 @@
-# Golangci-lint Configuration Manager
+# Golangci Wrapper
 
-A transparent proxy for golangci-lint that automatically manages configuration by merging base and local YAML files.
-
-## Why Use This?
-
-- **Consistent configuration** across all your Go projects
-- **Automatic updates** of base linting rules without manual intervention
-- **Local customization** while maintaining team standards
-- **Zero configuration** for new projects - just run and it works
-- **Transparent usage** - works exactly like regular golangci-lint
+Go-based helper that generates a merged configuration for `golangci-lint` before running `golangci-lint run`. The wrapper expects you to keep the project-specific configuration locally and store the remote base configuration URL inside that file.
 
 ## Installation
 
-1. Copy `golangci-lint.sh` to your desired location (e.g., `/usr/local/bin/`)
-2. Make it executable:
+1. Install the wrapper (pick any version tag you maintain):
    ```bash
-   chmod +x golangci-lint.sh
+   go install github.com/truewebber/golangci-config/cmd/golangci-wrapper@latest
+   ```
+2. Install the actual linter using the version you want to standardise on:
+   ```bash
+   go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.59.1
    ```
 
-## Prerequisites
+## Local configuration layout
 
-Install the required dependencies:
-
-```bash
-# macOS
-brew install golangci-lint yq curl
-
-# Or via Go
-go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-go install github.com/mikefarah/yq/v4@latest
-```
-
-## Usage
-
-Use it exactly like `golangci-lint`, but with automatic configuration management:
-
-```bash
-# Basic usage
-./golangci-lint.sh run
-
-# With custom local config
-./golangci-lint.sh run -c my-config.yml
-
-# With additional flags
-./golangci-lint.sh run --fix --verbose
-```
-
-## Configuration
-
-The tool automatically:
-1. Downloads/updates base configuration from the remote repository
-2. Looks for local configuration (`.golangci.local.yml` or `.golangci.local.yaml`)
-3. Merges them into `.golangci.generated.yml`
-4. Runs golangci-lint with the merged configuration
-
-Create `.golangci.local.yml` in your project to customize settings:
+Create a local config file (default search order: `.golangci.local.yml`, `.golangci.local.yaml`, `.golangci.yml`, `.golangci.yaml`) and add a comment with the remote base configuration directive:
 
 ```yaml
+// GOLANGCI_LINT_REMOTE_CONFIG: https://example.com/common/.golangci.base.yml
+
+run:
+  tests: false
+
 linters:
   enable:
     - gosec
-  disable:
-    - gofmt
-
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - gosec
 ```
 
-## Environment Variables
+During execution the wrapper downloads the remote configuration, merges it with the local file (local values win), writes `.golangci.generated.yml` next to the local config, and passes that file to `golangci-lint`.
 
-- `GOLANGCI_FORCE_UPDATE=1` - Force update base configuration
-- `GOLANGCI_SKIP_UPDATE=1` - Skip configuration update
+If the directive is missing or the download fails, the wrapper warns and proceeds with the local configuration only. Remote files are cached in `~/.cache/golangci-wrapper` and reused when the network is unavailable.
 
-## Cleanup
-
-Remove cache and generated files:
+## Usage
 
 ```bash
-./golangci-lint.sh --cleanup
+golangci-wrapper run ./...
+golangci-wrapper run --fix
+golangci-wrapper run -c internal/config/.golangci.local.yml ./...
 ```
 
-## Help
+The wrapper only strips `-c/--config` flags to inject the generated file; all other arguments are forwarded to the underlying `golangci-lint`.
+
+## Toolchain management
+
+To pin tool versions in `go.mod`, add a `tools/tools.go` file:
+
+```go
+//go:build tools
+
+package tools
+
+import (
+	_ "github.com/golangci/golangci-lint/cmd/golangci-lint"
+)
+```
+
+Running `go mod tidy` then locks in the linter version. Developers install or update both tools with:
 
 ```bash
-./golangci-lint.sh --help
+go install github.com/truewebber/golangci-config/cmd/golangci-wrapper@<tag>
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@<version>
 ```
