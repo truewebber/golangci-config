@@ -2,3 +2,5 @@
 .vscode
 
 .DS_Store
+
+.golangci.generated.yml

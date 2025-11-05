@@ -63,7 +63,7 @@ func run(args []string) error {
 	}
 
 	if err := ensureGolangciLintAvailable(); err != nil {
-		return err
+		return fmt.Errorf("ensure golangci-lint available: %w", err)
 	}
 
 	finalArgs := buildFinalArgs(args, mergedConfigPath, localConfig)
@@ -90,8 +90,13 @@ func printUsage() {
 }
 
 func ensureGolangciLintAvailable() error {
-	if _, err := exec.LookPath("golangci-lint"); err != nil {
-		return errors.New("golangci-lint not found in PATH. Install it with: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@<version>")
+	cmd := exec.Command("go", "tool", "-n", "github.com/golangci/golangci-lint/v2/cmd/golangci-lint")
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("golangci-lint via go tool is unavailable: %w", err)
 	}
 
 	return nil
@@ -495,7 +500,16 @@ func buildFinalArgs(original []string, generatedConfig, originalConfig string) [
 }
 
 func runGolangciLint(args []string) error {
-	cmd := exec.Command("golangci-lint", args...)
+	args = append(
+		[]string{
+			"tool",
+			"github.com/golangci/golangci-lint/v2/cmd/golangci-lint",
+		},
+		args...,
+	)
+
+	cmd := exec.Command("go", args...)
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
