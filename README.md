@@ -8,10 +8,7 @@ Go-based helper that generates a merged configuration for `golangci-lint` before
    ```bash
    go install github.com/truewebber/golangci-config/cmd/golangci-wrapper@latest
    ```
-2. Install the actual linter using the version you want to standardise on:
-   ```bash
-   go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.59.1
-   ```
+2. Ensure you have Go ≥ 1.25 installed. The wrapper uses `go tool github.com/golangci/golangci-lint/v2/cmd/golangci-lint`, so the linter is built on demand from source—no separate binary is required.
 
 ## Local configuration layout
 
@@ -40,11 +37,11 @@ golangci-wrapper run --fix
 golangci-wrapper run -c internal/config/.golangci.local.yml ./...
 ```
 
-The wrapper only strips `-c/--config` flags to inject the generated file; all other arguments are forwarded to the underlying `golangci-lint`.
+The wrapper only strips `-c/--config` flags to inject the generated file; all other arguments are forwarded to `go tool … golangci-lint`.
 
 ## Toolchain management
 
-To pin tool versions in `go.mod`, add a `tools/tools.go` file:
+To pin the linter version in your repository, add a `tools/tools.go` file and keep it in sync with the wrapper:
 
 ```go
 //go:build tools
@@ -56,9 +53,4 @@ import (
 )
 ```
 
-Running `go mod tidy` then locks in the linter version. Developers install or update both tools with:
-
-```bash
-go install github.com/truewebber/golangci-config/cmd/golangci-wrapper@<tag>
-go install github.com/golangci/golangci-lint/cmd/golangci-lint@<version>
-```
+Running `go mod tidy` then locks in the linter version the wrapper will compile when invoking `go tool`.
