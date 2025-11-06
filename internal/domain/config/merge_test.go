@@ -1,8 +1,10 @@
-package config
+package config_test
 
 import (
 	"reflect"
 	"testing"
+
+	"github.com/truewebber/golangci-config/internal/domain/config"
 )
 
 func TestNormalizeYAML(t *testing.T) {
@@ -46,20 +48,22 @@ list:
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := NormalizeYAML([]byte(tt.input))
+			got, err := config.NormalizeYAML([]byte(tt.input))
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("expected error, got none")
 				}
+
 				return
 			}
+
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
+
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Fatalf("NormalizeYAML() = %#v, want %#v", got, tt.want)
 			}
@@ -168,15 +172,16 @@ func TestMerge(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			baseSnapshot := DeepCopy(tt.base)
-			got := Merge(tt.base, tt.override)
+			baseSnapshot := config.DeepCopy(tt.base)
+
+			got := config.Merge(tt.base, tt.override)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Fatalf("Merge() = %#v, want %#v", got, tt.want)
 			}
+
 			if !reflect.DeepEqual(tt.base, baseSnapshot) {
 				t.Fatalf("Merge() modified base. got=%#v, want=%#v", tt.base, baseSnapshot)
 			}

@@ -1,4 +1,4 @@
-package configinfra
+package configinfra_test
 
 import (
 	"os"
@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	domainconfig "github.com/truewebber/golangci-config/internal/domain/config"
+	configinfra "github.com/truewebber/golangci-config/internal/infrastructure/config"
 )
 
 type stubLogger struct {
@@ -36,12 +37,12 @@ type stubFetcher struct {
 	data      []byte
 	fromCache bool
 	err       error
-
-	calls []string
+	calls     []string
 }
 
 func (s *stubFetcher) Fetch(url string) ([]byte, bool, error) {
 	s.calls = append(s.calls, url)
+
 	return s.data, s.fromCache, s.err
 }
 
@@ -149,7 +150,6 @@ linters:
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			tempDir := t.TempDir()
 
@@ -157,25 +157,24 @@ linters:
 			if err != nil {
 				t.Fatalf("get working directory: %v", err)
 			}
-			if err := os.Chdir(tempDir); err != nil {
-				t.Fatalf("chdir to temp dir: %v", err)
-			}
-			defer func() {
-				_ = os.Chdir(cwd)
-			}()
+
+			t.Chdir(tempDir)
+
+			defer t.Chdir(cwd)
 
 			localPath := "config.yml"
-			if err := os.WriteFile(localPath, []byte(tt.localContent), 0o644); err != nil {
+			if err := os.WriteFile(localPath, []byte(tt.localContent), 0o600); err != nil {
 				t.Fatalf("write local config: %v", err)
 			}
 
 			// Create stray generated config to ensure cleanup removes it.
-			strayDir := filepath.Join("stray")
-			if err := os.Mkdir(strayDir, 0o755); err != nil {
+			const strayDir = "stray"
+			if err := os.Mkdir(strayDir, 0o750); err != nil {
 				t.Fatalf("create stray dir: %v", err)
 			}
+
 			strayPath := filepath.Join(strayDir, domainconfig.GeneratedFileName)
-			if err := os.WriteFile(strayPath, []byte("stale"), 0o644); err != nil {
+			if err := os.WriteFile(strayPath, []byte("stale"), 0o600); err != nil {
 				t.Fatalf("write stray file: %v", err)
 			}
 
@@ -186,7 +185,7 @@ linters:
 				err:       tt.remoteErr,
 			}
 
-			svc := NewService(logger, fetcher)
+			svc := configinfra.NewService(logger, fetcher)
 
 			generatedPath, err := svc.Prepare(localPath)
 			if err != nil {
@@ -214,6 +213,7 @@ linters:
 			}
 
 			body := extractBody(string(content))
+
 			normalized, err := domainconfig.NormalizeYAML([]byte(body))
 			if err != nil {
 				t.Fatalf("normalize generated yaml: %v", err)
@@ -235,6 +235,7 @@ linters:
 
 			// Check warning messages, if expected.
 			var warnings []string
+
 			for _, entry := range logger.entries {
 				if entry.level == "warn" {
 					warnings = append(warnings, entry.msg)
@@ -253,6 +254,7 @@ func extractBody(content string) string {
 	if len(parts) == 2 {
 		return parts[1]
 	}
+
 	return content
 }
 
@@ -260,11 +262,13 @@ func equalStringSlices(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}
+
 	for i := range a {
 		if a[i] != b[i] {
 			return false
 		}
 	}
+
 	return true
 }
 

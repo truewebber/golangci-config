@@ -7,18 +7,21 @@ import (
 
 var ErrMissingConfigValue = errors.New("missing value for -c/--config flag")
 
-func ParseConfigFlag(args []string) (string, bool, error) {
-	for i := 0; i < len(args); i++ {
-		switch arg := args[i]; {
+func ParseConfigFlag(args []string) (path string, provided bool, err error) {
+	for index, arg := range args {
+		switch {
 		case arg == "-c", arg == "--config":
-			if i+1 >= len(args) {
+			nextIndex := index + 1
+			if nextIndex >= len(args) {
 				return "", true, ErrMissingConfigValue
 			}
-			return args[i+1], true, nil
+
+			return args[nextIndex], true, nil
 		case strings.HasPrefix(arg, "--config="):
 			return strings.TrimPrefix(arg, "--config="), true, nil
 		}
 	}
+
 	return "", false, nil
 }
 

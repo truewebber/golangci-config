@@ -1,4 +1,4 @@
-package logger
+package log
 
 // Logger exposes structured logging capabilities required by the application.
 type Logger interface {

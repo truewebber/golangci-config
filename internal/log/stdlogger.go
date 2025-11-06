@@ -1,4 +1,4 @@
-package logger
+package log
 
 import (
 	"fmt"
@@ -45,16 +45,20 @@ func joinKeyValues(kv ...interface{}) string {
 	}
 
 	var builder strings.Builder
+
 	for i := 0; i < len(kv); i += 2 {
 		if i > 0 {
 			builder.WriteString(" ")
 		}
 
 		key := fmt.Sprint(kv[i])
+
 		var value interface{}
+
 		if i+1 < len(kv) {
 			value = kv[i+1]
 		}
+
 		builder.WriteString(fmt.Sprintf("%s=%v", key, value))
 	}
 

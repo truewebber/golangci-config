@@ -25,15 +25,22 @@ func NewHTTPFetcher(cacheDir string, timeout time.Duration) *HTTPFetcher {
 	}
 }
 
-func (f *HTTPFetcher) Fetch(url string) (data []byte, fromCache bool, err error) {
-	cachePath, etagPath, err := f.cachePaths(url)
-	if err != nil {
-		return nil, false, err
+const (
+	writePerm   = 0o600
+	makeDirPerm = 0o750
+)
+
+var errUnexpectedHTTPStatus = errors.New("unexpected HTTP status")
+
+func (f *HTTPFetcher) Fetch(url string) (data []byte, fromCache bool, retErr error) {
+	cachePath, etagPath, cacheErr := f.cachePaths(url)
+	if cacheErr != nil {
+		return nil, false, fmt.Errorf("cache paths: %w", cacheErr)
 	}
 
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return nil, false, fmt.Errorf("create request: %w", err)
+	req, reqErr := http.NewRequest(http.MethodGet, url, nil)
+	if reqErr != nil {
+		return nil, false, fmt.Errorf("new http request: %w", reqErr)
 	}
 
 	if etag, err := os.ReadFile(etagPath); err == nil {
@@ -42,58 +49,73 @@ func (f *HTTPFetcher) Fetch(url string) (data []byte, fromCache bool, err error)
 		}
 	}
 
-	resp, err := f.client.Do(req)
-	if err != nil {
-		body, cacheErr := os.ReadFile(cachePath)
-		if cacheErr == nil {
+	resp, doErr := f.client.Do(req)
+	if doErr != nil {
+		body, readErr := os.ReadFile(cachePath)
+		if readErr == nil {
 			return body, true, nil
 		}
-		return nil, false, err
+
+		return nil, false, fmt.Errorf("fetch %s: %w", url, doErr)
 	}
+
 	defer resp.Body.Close()
 
 	switch resp.StatusCode {
 	case http.StatusOK:
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			if fallback, cacheErr := os.ReadFile(cachePath); cacheErr == nil {
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			if fallback, fileErr := os.ReadFile(cachePath); fileErr == nil {
 				return fallback, true, nil
 			}
-			return nil, false, err
+
+			return nil, false, fmt.Errorf("fetch %s: %w", url, readErr)
 		}
+
 		if err := f.ensureCacheDir(); err == nil {
-			_ = os.WriteFile(cachePath, body, 0o644)
+			_ = os.WriteFile(cachePath, body, writePerm)
 			if newETag := strings.TrimSpace(resp.Header.Get("ETag")); newETag != "" {
-				_ = os.WriteFile(etagPath, []byte(newETag), 0o644)
+				_ = os.WriteFile(etagPath, []byte(newETag), writePerm)
 			}
 		}
+
 		return body, false, nil
 	case http.StatusNotModified:
 		body, err := os.ReadFile(cachePath)
 		if err != nil {
 			return nil, false, fmt.Errorf("remote responded 304 but cache unavailable: %w", err)
 		}
+
 		return body, true, nil
 	default:
-		body, cacheErr := os.ReadFile(cachePath)
-		if cacheErr == nil {
+		body, readErr := os.ReadFile(cachePath)
+		if readErr == nil {
 			return body, true, nil
 		}
-		return nil, false, fmt.Errorf("unexpected HTTP status %d", resp.StatusCode)
+
+		return nil, false, fmt.Errorf("%w: %d", errUnexpectedHTTPStatus, resp.StatusCode)
 	}
 }
 
 func (f *HTTPFetcher) ensureCacheDir() error {
-	return os.MkdirAll(f.cacheDir, 0o755)
+	if err := os.MkdirAll(f.cacheDir, makeDirPerm); err != nil {
+		return fmt.Errorf("create dir: %w", err)
+	}
+
+	return nil
 }
+
+var errCacheDirectoryIsEmpty = errors.New("cache directory is empty")
 
 func (f *HTTPFetcher) cachePaths(url string) (cachePath, etagPath string, err error) {
 	if strings.TrimSpace(f.cacheDir) == "" {
-		return "", "", errors.New("cache directory is empty")
+		return "", "", errCacheDirectoryIsEmpty
 	}
+
 	hash := sha256.Sum256([]byte(url))
 	name := hex.EncodeToString(hash[:])
 	cachePath = filepath.Join(f.cacheDir, name+".yml")
 	etagPath = filepath.Join(f.cacheDir, name+".etag")
+
 	return cachePath, etagPath, nil
 }

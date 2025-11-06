@@ -7,7 +7,7 @@ import (
 )
 
 func HasContent(data []byte) bool {
-	if len(strings.TrimSpace(string(data))) == 0 {
+	if strings.TrimSpace(string(data)) == "" {
 		return false
 	}
 

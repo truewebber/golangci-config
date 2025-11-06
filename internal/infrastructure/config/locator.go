@@ -1,6 +1,7 @@
 package configinfra
 
 import (
+	"fmt"
 	"os"
 
 	domainconfig "github.com/truewebber/golangci-config/internal/domain/config"
@@ -15,7 +16,7 @@ func NewLocator() *Locator {
 
 func (l *Locator) Locate(args []string) (string, error) {
 	if path, provided, err := domainconfig.ParseConfigFlag(args); err != nil {
-		return "", err
+		return "", fmt.Errorf("parse config flag: %w", err)
 	} else if provided {
 		return path, nil
 	}

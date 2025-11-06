@@ -6,9 +6,10 @@ import (
 	"os"
 	"path/filepath"
 
-	domainconfig "github.com/truewebber/golangci-config/internal/domain/config"
-	loggerpkg "github.com/truewebber/golangci-config/internal/logger"
 	"gopkg.in/yaml.v3"
+
+	domainconfig "github.com/truewebber/golangci-config/internal/domain/config"
+	"github.com/truewebber/golangci-config/internal/log"
 )
 
 type RemoteFetcher interface {
@@ -16,11 +17,11 @@ type RemoteFetcher interface {
 }
 
 type Service struct {
-	logger  loggerpkg.Logger
+	logger  log.Logger
 	fetcher RemoteFetcher
 }
 
-func NewService(logger loggerpkg.Logger, fetcher RemoteFetcher) *Service {
+func NewService(logger log.Logger, fetcher RemoteFetcher) *Service {
 	return &Service{
 		logger:  logger,
 		fetcher: fetcher,
@@ -37,6 +38,7 @@ func (s *Service) Prepare(localConfigPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("parse local configuration %s: %w", localConfigPath, err)
 	}
+
 	if localDocument == nil {
 		localDocument = map[string]interface{}{}
 	}
@@ -60,63 +62,79 @@ func (s *Service) Prepare(localConfigPath string) (string, error) {
 				if fromCache {
 					s.logger.Warn("Using cached remote configuration", "url", remoteURL)
 				}
+
 				merged = domainconfig.Merge(remoteDocument, localDocument)
 			}
 		}
 	} else {
-		s.logger.Warn("Remote configuration directive not found. Using local configuration only.", "directive", domainconfig.RemoteDirective)
+		s.logger.Warn("Remote configuration directive not found. Using local configuration only.",
+			"directive", domainconfig.RemoteDirective)
 	}
 
 	generatedPath := domainconfig.GeneratedPath(localConfigPath)
 	if err := s.cleanupGeneratedFiles(generatedPath); err != nil {
-		return "", err
+		return "", fmt.Errorf("cleanup generated files: %w", err)
 	}
 
 	yamlBytes, err := yamlMarshal(merged)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("yaml marshal: %w", err)
 	}
 
 	header := domainconfig.Header(remoteURL, localConfigPath)
 	if err := writeFileAtomic(generatedPath, header, yamlBytes); err != nil {
-		return "", err
+		return "", fmt.Errorf("write file atomic: %w", err)
 	}
 
 	s.logger.Info("Generated configuration file", "path", generatedPath)
+
 	return generatedPath, nil
 }
 
 func (s *Service) cleanupGeneratedFiles(current string) error {
-	absCurrent, err := filepath.Abs(current)
-	if err != nil {
-		return fmt.Errorf("resolve generated config path: %w", err)
+	absCurrent, filepathErr := filepath.Abs(current)
+	if filepathErr != nil {
+		return fmt.Errorf("resolve generated config path: %w", filepathErr)
 	}
 
-	return filepath.WalkDir(".", func(path string, d os.DirEntry, walkErr error) error {
+	if err := filepath.WalkDir(".", s.walkThrough(absCurrent)); err != nil {
+		return fmt.Errorf("walk dir: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) walkThrough(absCurrent string) func(path string, d os.DirEntry, walkErr error) error {
+	return func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return walkErr
+			return fmt.Errorf("walk dir: %w", walkErr)
 		}
+
 		if d.IsDir() {
 			return nil
 		}
+
 		if filepath.Base(path) != domainconfig.GeneratedFileName {
 			return nil
 		}
 
 		absPath, err := filepath.Abs(path)
 		if err != nil {
-			return err
+			return fmt.Errorf("absolute path: %w", err)
 		}
+
 		if absPath == absCurrent {
 			return nil
 		}
 
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("remove old generated config %s: %w", path, err)
+			return fmt.Errorf("os remove: %w", err)
 		}
+
 		s.logger.Info("Removed old generated config", "path", path)
+
 		return nil
-	})
+	}
 }
 
 func yamlMarshal(value interface{}) ([]byte, error) {
@@ -124,16 +142,21 @@ func yamlMarshal(value interface{}) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("encode merged configuration: %w", err)
 	}
+
 	return data, nil
 }
 
+const writePerm = 0o600
+
 func writeFileAtomic(path, header string, body []byte) error {
 	tempPath := path + ".tmp"
-	if err := os.WriteFile(tempPath, append([]byte(header), body...), 0o644); err != nil {
+	if err := os.WriteFile(tempPath, append([]byte(header), body...), writePerm); err != nil {
 		return fmt.Errorf("write generated configuration: %w", err)
 	}
+
 	if err := os.Rename(tempPath, path); err != nil {
 		return fmt.Errorf("finalize generated configuration: %w", err)
 	}
+
 	return nil
 }

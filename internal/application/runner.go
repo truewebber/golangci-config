@@ -1,10 +1,11 @@
 package application
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
-	loggerpkg "github.com/truewebber/golangci-config/internal/logger"
+	loggerpkg "github.com/truewebber/golangci-config/internal/log"
 )
 
 type ConfigLocator interface {
@@ -16,8 +17,8 @@ type ConfigService interface {
 }
 
 type Linter interface {
-	EnsureAvailable() error
-	Run(args []string) error
+	EnsureAvailable(ctx context.Context) error
+	Run(ctx context.Context, args []string) error
 }
 
 type Runner struct {
@@ -41,41 +42,43 @@ func NewRunner(
 	}
 }
 
-func (r *Runner) Run(args []string) error {
+func (r *Runner) Run(ctx context.Context, args []string) error {
 	localConfig, err := r.configLocator.Locate(args)
 	if err != nil {
 		return fmt.Errorf("locate config: %w", err)
 	}
 
-	var generatedConfig string
-	if localConfig != "" {
-		generatedConfig, err = r.configService.Prepare(localConfig)
-		if err != nil {
-			return fmt.Errorf("prepare config: %w", err)
-		}
-	} else {
-		r.logger.Warn("Local configuration file not found; running without generated config")
+	generatedConfig, prepareErr := r.prepareConfig(localConfig)
+	if prepareErr != nil {
+		return fmt.Errorf("prepare config: %w", prepareErr)
 	}
 
-	if err := r.linter.EnsureAvailable(); err != nil {
-		return fmt.Errorf("ensure linter available: %w", err)
+	if ensureErr := r.linter.EnsureAvailable(ctx); ensureErr != nil {
+		return fmt.Errorf("ensure linter available: %w", ensureErr)
 	}
 
 	finalArgs := buildFinalArgs(args, generatedConfig, localConfig)
-	return r.linter.Run(finalArgs)
+
+	if linterErr := r.linter.Run(ctx, finalArgs); linterErr != nil {
+		return fmt.Errorf("run linter: %w", linterErr)
+	}
+
+	return nil
 }
 
 func buildFinalArgs(original []string, generatedConfig, originalConfig string) []string {
-	finalArgs := make([]string, 0, len(original)+2)
+	const configArgumentsCount = 2
+
+	finalArgs := make([]string, 0, len(original)+configArgumentsCount)
 	skipNext := false
 
-	for i := 0; i < len(original); i++ {
+	for _, arg := range original {
 		if skipNext {
 			skipNext = false
+
 			continue
 		}
 
-		arg := original[i]
 		switch {
 		case arg == "-c", arg == "--config":
 			skipNext = true
@@ -98,4 +101,19 @@ func buildFinalArgs(original []string, generatedConfig, originalConfig string) [
 	}
 
 	return finalArgs
+}
+
+func (r *Runner) prepareConfig(localConfig string) (string, error) {
+	if localConfig == "" {
+		r.logger.Warn("Local configuration file not found; running without generated config")
+
+		return "", nil
+	}
+
+	generatedConfig, err := r.configService.Prepare(localConfig)
+	if err != nil {
+		return "", fmt.Errorf("prepare config: %w", err)
+	}
+
+	return generatedConfig, nil
 }
