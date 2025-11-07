@@ -8,6 +8,7 @@ import (
 	loggerpkg "github.com/truewebber/golangci-config/internal/log"
 )
 
+//go:generate go run go.uber.org/mock/mockgen -source=runner.go -destination=mocks_test.go -package application_test
 type ConfigLocator interface {
 	Locate(args []string) (string, error)
 }
@@ -57,7 +58,7 @@ func (r *Runner) Run(ctx context.Context, args []string) error {
 		return fmt.Errorf("ensure linter available: %w", ensureErr)
 	}
 
-	finalArgs := buildFinalArgs(args, generatedConfig, localConfig)
+	finalArgs := BuildFinalArgs(args, generatedConfig, localConfig)
 
 	if linterErr := r.linter.Run(ctx, finalArgs); linterErr != nil {
 		return fmt.Errorf("run linter: %w", linterErr)
@@ -66,7 +67,10 @@ func (r *Runner) Run(ctx context.Context, args []string) error {
 	return nil
 }
 
-func buildFinalArgs(original []string, generatedConfig, originalConfig string) []string {
+// BuildFinalArgs builds final arguments for linter by removing config flags
+// and adding the generated or original config.
+// Exported for testing.
+func BuildFinalArgs(original []string, generatedConfig, originalConfig string) []string {
 	const configArgumentsCount = 2
 
 	finalArgs := make([]string, 0, len(original)+configArgumentsCount)

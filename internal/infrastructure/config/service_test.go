@@ -147,6 +147,62 @@ linters:
 			expectWarnings: []string{"Failed to parse remote configuration; using local config only"},
 			expectInfoLogs: []string{"Removed old generated config", "Generated configuration file"},
 		},
+		{
+			name:         "empty_local_config_file",
+			localContent: "",
+			expectMerged:  "{}\n",
+			expectWarnings: []string{"Remote configuration directive not found. Using local configuration only."},
+			expectInfoLogs: []string{"Removed old generated config", "Generated configuration file"},
+		},
+		{
+			name: "generation_in_subdirectory",
+			localContent: `linters:
+  enable:
+    - govet
+`,
+			expectMerged: `linters:
+  enable:
+    - govet
+`,
+			expectWarnings: []string{"Remote configuration directive not found. Using local configuration only."},
+			expectInfoLogs: []string{"Removed old generated config", "Generated configuration file"},
+		},
+	}
+
+	negativeTests := []struct {
+		name          string
+		setup         func(string) error
+		localPath     string
+		expectErr     bool
+		errContains   string
+		remoteErr     error
+		remoteCalled  bool
+	}{
+		{
+			name:      "file_not_exists",
+			localPath: "nonexistent.yml",
+			expectErr: true,
+			errContains: "read local configuration",
+		},
+		{
+			name: "invalid_yaml_in_local_config",
+			setup: func(dir string) error {
+				return os.WriteFile(filepath.Join(dir, "invalid.yml"), []byte("invalid: ["), 0o600)
+			},
+			localPath:   "invalid.yml",
+			expectErr:   true,
+			errContains: "parse local configuration",
+		},
+		{
+			name: "context_canceled",
+			setup: func(dir string) error {
+				return os.WriteFile(filepath.Join(dir, "config.yml"), []byte(remoteDirective+"\nlinters:\n  enable: [govet]"), 0o600)
+			},
+			localPath:    "config.yml",
+			expectErr:    false, // Context cancellation handled gracefully
+			remoteCalled: true,
+			remoteErr:    context.Canceled,
+		},
 	}
 
 	for _, tt := range tests {
@@ -162,7 +218,16 @@ linters:
 
 			defer t.Chdir(cwd)
 
-			localPath := "config.yml"
+			localPath := tt.name + ".yml"
+			if tt.name == "generation_in_subdirectory" {
+				subDir := filepath.Join(tempDir, "subdir")
+				if err := os.MkdirAll(subDir, 0o750); err != nil {
+					t.Fatalf("create subdir: %v", err)
+				}
+
+				localPath = filepath.Join("subdir", "config.yml")
+			}
+
 			if err := os.WriteFile(localPath, []byte(tt.localContent), 0o600); err != nil {
 				t.Fatalf("write local config: %v", err)
 			}
@@ -237,6 +302,17 @@ linters:
 				t.Fatalf("normalize expected yaml: %v", err)
 			}
 
+			// For empty config, normalize to empty map
+			if tt.name == "empty_local_config_file" {
+				if normalized == nil {
+					normalized = map[string]interface{}{}
+				}
+
+				if wantNormalized == nil {
+					wantNormalized = map[string]interface{}{}
+				}
+			}
+
 			if !reflect.DeepEqual(normalized, wantNormalized) {
 				t.Fatalf("generated config mismatch\n\tgot:  %s\n\twant: %s", body, tt.expectMerged)
 			}
@@ -252,11 +328,16 @@ linters:
 				infoLogs []string
 			)
 
+			const (
+				logLevelWarn = "warn"
+				logLevelInfo = "info"
+			)
+
 			for _, entry := range logger.entries {
 				switch entry.level {
-				case "warn":
+				case logLevelWarn:
 					warnings = append(warnings, entry.msg)
-				case "info":
+				case logLevelInfo:
 					infoLogs = append(infoLogs, entry.msg)
 				}
 			}
@@ -267,6 +348,61 @@ linters:
 
 			if !equalStringSlices(tt.expectInfoLogs, infoLogs) {
 				t.Fatalf("info logs = %v, want %v", infoLogs, tt.expectInfoLogs)
+			}
+		})
+	}
+
+	for _, tt := range negativeTests {
+		t.Run("negative_"+tt.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+
+			cwd, err := os.Getwd()
+			if err != nil {
+				t.Fatalf("get working directory: %v", err)
+			}
+
+			t.Chdir(tempDir)
+
+			defer t.Chdir(cwd)
+
+			if tt.setup != nil {
+				if err := tt.setup(tempDir); err != nil {
+					t.Fatalf("setup failed: %v", err)
+				}
+			}
+
+			logger := &stubLogger{}
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			fetcher := remote.NewMockRemoteFetcher(ctrl)
+
+			if tt.remoteCalled {
+				fetcher.EXPECT().
+					Fetch(gomock.Any(), gomock.AssignableToTypeOf(&url.URL{})).
+					Return(domainconfig.FetchResult{}, tt.remoteErr)
+			} else {
+				fetcher.EXPECT().Fetch(gomock.Any(), gomock.Any()).Times(0)
+			}
+
+			svc := configinfra.NewService(logger, fetcher)
+
+			_, err = svc.Prepare(context.Background(), tt.localPath)
+			if tt.expectErr {
+				if err == nil {
+					t.Fatalf("Prepare() expected error, got nil")
+				}
+
+				if !strings.Contains(err.Error(), tt.errContains) {
+					t.Fatalf("Prepare() error = %v, want to contain %q", err, tt.errContains)
+				}
+
+				return
+			}
+
+			if err != nil && tt.remoteErr == nil {
+				t.Fatalf("Prepare() unexpected error: %v", err)
 			}
 		})
 	}
