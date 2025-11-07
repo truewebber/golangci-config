@@ -7,6 +7,10 @@ import (
 )
 
 func Merge(base, override interface{}) interface{} {
+	if override == nil {
+		override = map[string]interface{}{}
+	}
+
 	switch baseTyped := base.(type) {
 	case map[string]interface{}:
 		result := make(map[string]interface{}, len(baseTyped))

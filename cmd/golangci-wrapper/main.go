@@ -36,7 +36,7 @@ func main() {
 	}
 
 	timeout := time.Duration(remoteFetcherTimeoutSeconds) * time.Second
-	fetcher := remote.NewHTTPFetcher(cacheDir, timeout)
+	fetcher := remote.NewHTTPFetcher(logger, cacheDir, timeout)
 	configService := configinfra.NewService(logger, fetcher)
 	locator := configinfra.NewLocator()
 	linter := lint.NewToolRunner()

@@ -24,6 +24,7 @@ func (t *ToolRunner) EnsureAvailable(ctx context.Context) error {
 	)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
+
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 
 	if err := cmd.Run(); err != nil {

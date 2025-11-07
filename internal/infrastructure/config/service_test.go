@@ -1,6 +1,7 @@
 package configinfra_test
 
 import (
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -9,6 +10,8 @@ import (
 
 	domainconfig "github.com/truewebber/golangci-config/internal/domain/config"
 	configinfra "github.com/truewebber/golangci-config/internal/infrastructure/config"
+	"github.com/truewebber/golangci-config/internal/infrastructure/remote"
+	"go.uber.org/mock/gomock"
 )
 
 type stubLogger struct {
@@ -33,21 +36,9 @@ func (s *stubLogger) Error(msg string, kv ...interface{}) {
 	s.entries = append(s.entries, logEntry{level: "error", msg: msg, kv: append([]interface{}(nil), kv...)})
 }
 
-type stubFetcher struct {
-	data      []byte
-	fromCache bool
-	err       error
-	calls     []string
-}
-
-func (s *stubFetcher) Fetch(url string) ([]byte, bool, error) {
-	s.calls = append(s.calls, url)
-
-	return s.data, s.fromCache, s.err
-}
-
 func TestServicePrepare(t *testing.T) {
-	remoteDirective := "# " + domainconfig.RemoteDirective + ": https://example.com/base.yml"
+	const remoteURL = "https://example.com/base.yml"
+	remoteDirective := "# " + domainconfig.RemoteDirective + ": " + remoteURL
 
 	tests := []struct {
 		name               string
@@ -179,10 +170,23 @@ linters:
 			}
 
 			logger := &stubLogger{}
-			fetcher := &stubFetcher{
-				data:      tt.remoteData,
-				fromCache: tt.remoteFromCache,
-				err:       tt.remoteErr,
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			fetcher := remote.NewMockRemoteFetcher(ctrl)
+
+			if tt.expectRemoteCalled {
+				fetcher.EXPECT().
+					Fetch(gomock.AssignableToTypeOf(&url.URL{})).
+					DoAndReturn(func(u *url.URL) ([]byte, bool, error) {
+						if got := u.String(); got != remoteURL {
+							t.Fatalf("remote called with %s, want %s", got, remoteURL)
+						}
+
+						return tt.remoteData, tt.remoteFromCache, tt.remoteErr
+					})
+			} else {
+				fetcher.EXPECT().Fetch(gomock.Any()).Times(0)
 			}
 
 			svc := configinfra.NewService(logger, fetcher)
@@ -196,16 +200,6 @@ linters:
 			if generatedPath != expectedGenerated {
 				t.Fatalf("generated path = %s, want %s", generatedPath, expectedGenerated)
 			}
-
-			// Ensure remote fetcher usage matches expectation.
-			if tt.expectRemoteCalled != (len(fetcher.calls) > 0) {
-				t.Fatalf("remote called = %v, want %v", len(fetcher.calls) > 0, tt.expectRemoteCalled)
-			}
-
-			if tt.expectRemoteCalled && fetcher.calls[0] != "https://example.com/base.yml" {
-				t.Fatalf("remote called with %s, want https://example.com/base.yml", fetcher.calls[0])
-			}
-
 			// Read generated file and verify merged content ignores header.
 			content, err := os.ReadFile(generatedPath)
 			if err != nil {

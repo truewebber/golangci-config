@@ -3,6 +3,7 @@ package configinfra
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 
@@ -12,8 +13,9 @@ import (
 	"github.com/truewebber/golangci-config/internal/log"
 )
 
+//go:generate go run go.uber.org/mock/mockgen -source=service.go -destination=../remote/mock.go -package remote
 type RemoteFetcher interface {
-	Fetch(url string) (data []byte, fromCache bool, err error)
+	Fetch(u *url.URL) (data []byte, fromCache bool, err error)
 }
 
 type Service struct {
@@ -39,41 +41,31 @@ func (s *Service) Prepare(localConfigPath string) (string, error) {
 		return "", fmt.Errorf("parse local configuration %s: %w", localConfigPath, err)
 	}
 
-	if localDocument == nil {
-		localDocument = map[string]interface{}{}
+	remoteURL, err := domainconfig.ExtractRemoteURL(data)
+	if err != nil {
+		s.logger.Warn("failed to extract remote URL from local configuration", "error", err)
 	}
 
-	remoteURL := domainconfig.ExtractRemoteURL(data)
-	merged := localDocument
+	var remoteDocument interface{}
 
-	if remoteURL != "" {
-		s.logger.Info("Remote configuration directive found", "url", remoteURL)
+	if remoteURL != nil {
+		var rcErr error
 
-		remoteData, fromCache, fetchErr := s.fetcher.Fetch(remoteURL)
-		if fetchErr != nil {
-			s.logger.Warn("Unable to fetch remote configuration; using local config only", "error", fetchErr)
-		} else if len(remoteData) == 0 {
-			s.logger.Warn("Remote configuration is empty; using local config only")
-		} else {
-			remoteDocument, err := domainconfig.NormalizeYAML(remoteData)
-			if err != nil {
-				s.logger.Warn("Failed to parse remote configuration; using local config only", "error", err)
-			} else if remoteDocument != nil {
-				if fromCache {
-					s.logger.Warn("Using cached remote configuration", "url", remoteURL)
-				}
-
-				merged = domainconfig.Merge(remoteDocument, localDocument)
-			}
+		remoteDocument, rcErr = s.remoteConfigContents(remoteURL)
+		if rcErr != nil {
+			s.logger.Warn("Failed to extract remote document from local configuration", "error", rcErr)
 		}
-	} else {
-		s.logger.Warn("Remote configuration directive not found. Using local configuration only.",
-			"directive", domainconfig.RemoteDirective)
 	}
+
+	if remoteDocument == nil {
+		s.logger.Warn("Remote configuration directive not found. Using local configuration only")
+	}
+
+	merged := domainconfig.Merge(remoteDocument, localDocument)
 
 	generatedPath := domainconfig.GeneratedPath(localConfigPath)
-	if err := s.cleanupGeneratedFiles(generatedPath); err != nil {
-		return "", fmt.Errorf("cleanup generated files: %w", err)
+	if cleanupErr := s.cleanupGeneratedFiles(generatedPath); cleanupErr != nil {
+		return "", fmt.Errorf("cleanup generated files: %w", cleanupErr)
 	}
 
 	yamlBytes, err := yamlMarshal(merged)
@@ -82,13 +74,31 @@ func (s *Service) Prepare(localConfigPath string) (string, error) {
 	}
 
 	header := domainconfig.Header(remoteURL, localConfigPath)
-	if err := writeFileAtomic(generatedPath, header, yamlBytes); err != nil {
-		return "", fmt.Errorf("write file atomic: %w", err)
+	if writeErr := writeFileAtomic(generatedPath, header, yamlBytes); writeErr != nil {
+		return "", fmt.Errorf("write file atomic: %w", writeErr)
 	}
 
 	s.logger.Info("Generated configuration file", "path", generatedPath)
 
 	return generatedPath, nil
+}
+
+func (s *Service) remoteConfigContents(remoteURL *url.URL) (interface{}, error) {
+	remoteData, fromCache, err := s.fetcher.Fetch(remoteURL)
+	if err != nil {
+		return nil, fmt.Errorf("fetch remote configuration: %w", err)
+	}
+
+	if fromCache {
+		s.logger.Warn("Using cached remote configuration")
+	}
+
+	remoteDocument, err := domainconfig.NormalizeYAML(remoteData)
+	if err != nil {
+		return nil, fmt.Errorf("parse remote configuration: %w", err)
+	}
+
+	return remoteDocument, nil
 }
 
 func (s *Service) cleanupGeneratedFiles(current string) error {
@@ -127,8 +137,8 @@ func (s *Service) walkThrough(absCurrent string) func(path string, d os.DirEntry
 			return nil
 		}
 
-		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("os remove: %w", err)
+		if removeErr := os.Remove(path); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+			return fmt.Errorf("os remove: %w", removeErr)
 		}
 
 		s.logger.Info("Removed old generated config", "path", path)
