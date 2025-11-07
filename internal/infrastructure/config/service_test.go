@@ -1,6 +1,7 @@
 package configinfra_test
 
 import (
+	"context"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -36,8 +37,10 @@ func (s *stubLogger) Error(msg string, kv ...interface{}) {
 	s.entries = append(s.entries, logEntry{level: "error", msg: msg, kv: append([]interface{}(nil), kv...)})
 }
 
+//nolint:paralleltest // Cannot use t.Parallel() with t.Chdir()
 func TestServicePrepare(t *testing.T) {
 	const remoteURL = "https://example.com/base.yml"
+
 	remoteDirective := "# " + domainconfig.RemoteDirective + ": " + remoteURL
 
 	tests := []struct {
@@ -49,6 +52,7 @@ func TestServicePrepare(t *testing.T) {
 		expectRemoteCalled bool
 		expectMerged       string
 		expectWarnings     []string
+		expectInfoLogs     []string
 	}{
 		{
 			name: "no_remote_directive",
@@ -61,6 +65,7 @@ func TestServicePrepare(t *testing.T) {
     - gosimple
 `,
 			expectWarnings: []string{"Remote configuration directive not found. Using local configuration only."},
+			expectInfoLogs: []string{"Removed old generated config", "Generated configuration file"},
 		},
 		{
 			name: "remote_merge_success",
@@ -86,6 +91,7 @@ run:
 run:
   timeout: 2m
 `,
+			expectInfoLogs: []string{"Removed old generated config", "Generated configuration file"},
 		},
 		{
 			name: "remote_fetch_error",
@@ -101,6 +107,7 @@ linters:
     - staticcheck
 `,
 			expectWarnings: []string{"Unable to fetch remote configuration; using local config only"},
+			expectInfoLogs: []string{"Removed old generated config", "Generated configuration file"},
 		},
 		{
 			name: "remote_from_cache",
@@ -122,6 +129,7 @@ linters:
     - wsl
 `,
 			expectWarnings: []string{"Using cached remote configuration"},
+			expectInfoLogs: []string{"Removed old generated config", "Generated configuration file"},
 		},
 		{
 			name: "remote_invalid_yaml",
@@ -137,6 +145,7 @@ linters:
     - gofmt
 `,
 			expectWarnings: []string{"Failed to parse remote configuration; using local config only"},
+			expectInfoLogs: []string{"Removed old generated config", "Generated configuration file"},
 		},
 	}
 
@@ -170,6 +179,7 @@ linters:
 			}
 
 			logger := &stubLogger{}
+
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
@@ -177,21 +187,28 @@ linters:
 
 			if tt.expectRemoteCalled {
 				fetcher.EXPECT().
-					Fetch(gomock.AssignableToTypeOf(&url.URL{})).
-					DoAndReturn(func(u *url.URL) ([]byte, bool, error) {
+					Fetch(gomock.Any(), gomock.AssignableToTypeOf(&url.URL{})).
+					DoAndReturn(func(_ context.Context, u *url.URL) (domainconfig.FetchResult, error) {
 						if got := u.String(); got != remoteURL {
 							t.Fatalf("remote called with %s, want %s", got, remoteURL)
 						}
 
-						return tt.remoteData, tt.remoteFromCache, tt.remoteErr
+						if tt.remoteErr != nil {
+							return domainconfig.FetchResult{}, tt.remoteErr
+						}
+
+						return domainconfig.FetchResult{
+							Data:      tt.remoteData,
+							FromCache: tt.remoteFromCache,
+						}, nil
 					})
 			} else {
-				fetcher.EXPECT().Fetch(gomock.Any()).Times(0)
+				fetcher.EXPECT().Fetch(gomock.Any(), gomock.Any()).Times(0)
 			}
 
 			svc := configinfra.NewService(logger, fetcher)
 
-			generatedPath, err := svc.Prepare(localPath)
+			generatedPath, err := svc.Prepare(context.Background(), localPath)
 			if err != nil {
 				t.Fatalf("Prepare returned error: %v", err)
 			}
@@ -200,7 +217,9 @@ linters:
 			if generatedPath != expectedGenerated {
 				t.Fatalf("generated path = %s, want %s", generatedPath, expectedGenerated)
 			}
+
 			// Read generated file and verify merged content ignores header.
+			//nolint:gosec // G304: generatedPath is controlled by the test
 			content, err := os.ReadFile(generatedPath)
 			if err != nil {
 				t.Fatalf("read generated: %v", err)
@@ -228,16 +247,26 @@ linters:
 			}
 
 			// Check warning messages, if expected.
-			var warnings []string
+			var (
+				warnings []string
+				infoLogs []string
+			)
 
 			for _, entry := range logger.entries {
-				if entry.level == "warn" {
+				switch entry.level {
+				case "warn":
 					warnings = append(warnings, entry.msg)
+				case "info":
+					infoLogs = append(infoLogs, entry.msg)
 				}
 			}
 
 			if !equalStringSlices(tt.expectWarnings, warnings) {
 				t.Fatalf("warnings = %v, want %v", warnings, tt.expectWarnings)
+			}
+
+			if !equalStringSlices(tt.expectInfoLogs, infoLogs) {
+				t.Fatalf("info logs = %v, want %v", infoLogs, tt.expectInfoLogs)
 			}
 		})
 	}

@@ -13,7 +13,7 @@ type ConfigLocator interface {
 }
 
 type ConfigService interface {
-	Prepare(localConfigPath string) (string, error)
+	Prepare(ctx context.Context, localConfigPath string) (string, error)
 }
 
 type Linter interface {
@@ -48,7 +48,7 @@ func (r *Runner) Run(ctx context.Context, args []string) error {
 		return fmt.Errorf("locate config: %w", err)
 	}
 
-	generatedConfig, prepareErr := r.prepareConfig(localConfig)
+	generatedConfig, prepareErr := r.prepareConfig(ctx, localConfig)
 	if prepareErr != nil {
 		return fmt.Errorf("prepare config: %w", prepareErr)
 	}
@@ -103,14 +103,14 @@ func buildFinalArgs(original []string, generatedConfig, originalConfig string) [
 	return finalArgs
 }
 
-func (r *Runner) prepareConfig(localConfig string) (string, error) {
+func (r *Runner) prepareConfig(ctx context.Context, localConfig string) (string, error) {
 	if localConfig == "" {
 		r.logger.Warn("Local configuration file not found; running without generated config")
 
 		return "", nil
 	}
 
-	generatedConfig, err := r.configService.Prepare(localConfig)
+	generatedConfig, err := r.configService.Prepare(ctx, localConfig)
 	if err != nil {
 		return "", fmt.Errorf("prepare config: %w", err)
 	}

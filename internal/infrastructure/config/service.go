@@ -1,6 +1,7 @@
 package configinfra
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/url"
@@ -13,9 +14,14 @@ import (
 	"github.com/truewebber/golangci-config/internal/log"
 )
 
+var (
+	errFetchRemote = errors.New("fetch remote configuration")
+	errParseRemote = errors.New("parse remote configuration")
+)
+
 //go:generate go run go.uber.org/mock/mockgen -source=service.go -destination=../remote/mock.go -package remote
 type RemoteFetcher interface {
-	Fetch(u *url.URL) (data []byte, fromCache bool, err error)
+	Fetch(ctx context.Context, u *url.URL) (domainconfig.FetchResult, error)
 }
 
 type Service struct {
@@ -30,7 +36,8 @@ func NewService(logger log.Logger, fetcher RemoteFetcher) *Service {
 	}
 }
 
-func (s *Service) Prepare(localConfigPath string) (string, error) {
+func (s *Service) Prepare(ctx context.Context, localConfigPath string) (string, error) {
+	//nolint:gosec // G304: localConfigPath is controlled by the caller
 	data, err := os.ReadFile(localConfigPath)
 	if err != nil {
 		return "", fmt.Errorf("read local configuration %s: %w", localConfigPath, err)
@@ -41,27 +48,9 @@ func (s *Service) Prepare(localConfigPath string) (string, error) {
 		return "", fmt.Errorf("parse local configuration %s: %w", localConfigPath, err)
 	}
 
-	remoteURL, err := domainconfig.ExtractRemoteURL(data)
-	if err != nil {
-		s.logger.Warn("failed to extract remote URL from local configuration", "error", err)
-	}
+	remoteResult := s.handleRemoteConfig(ctx, data)
 
-	var remoteDocument interface{}
-
-	if remoteURL != nil {
-		var rcErr error
-
-		remoteDocument, rcErr = s.remoteConfigContents(remoteURL)
-		if rcErr != nil {
-			s.logger.Warn("Failed to extract remote document from local configuration", "error", rcErr)
-		}
-	}
-
-	if remoteDocument == nil {
-		s.logger.Warn("Remote configuration directive not found. Using local configuration only")
-	}
-
-	merged := domainconfig.Merge(remoteDocument, localDocument)
+	merged := domainconfig.Merge(remoteResult.Document, localDocument)
 
 	generatedPath := domainconfig.GeneratedPath(localConfigPath)
 	if cleanupErr := s.cleanupGeneratedFiles(generatedPath); cleanupErr != nil {
@@ -73,7 +62,7 @@ func (s *Service) Prepare(localConfigPath string) (string, error) {
 		return "", fmt.Errorf("yaml marshal: %w", err)
 	}
 
-	header := domainconfig.Header(remoteURL, localConfigPath)
+	header := domainconfig.Header(remoteResult.URL, localConfigPath)
 	if writeErr := writeFileAtomic(generatedPath, header, yamlBytes); writeErr != nil {
 		return "", fmt.Errorf("write file atomic: %w", writeErr)
 	}
@@ -83,19 +72,53 @@ func (s *Service) Prepare(localConfigPath string) (string, error) {
 	return generatedPath, nil
 }
 
-func (s *Service) remoteConfigContents(remoteURL *url.URL) (interface{}, error) {
-	remoteData, fromCache, err := s.fetcher.Fetch(remoteURL)
+type RemoteConfigResult struct {
+	URL      *url.URL
+	Document interface{}
+}
+
+func (s *Service) handleRemoteConfig(ctx context.Context, data []byte) RemoteConfigResult {
+	remoteURL, err := domainconfig.ExtractRemoteURL(data)
 	if err != nil {
-		return nil, fmt.Errorf("fetch remote configuration: %w", err)
+		if errors.Is(err, domainconfig.ErrNoURLFound) {
+			s.logger.Warn("Remote configuration directive not found. Using local configuration only.")
+		} else {
+			s.logger.Warn("failed to extract remote URL from local configuration", "error", err)
+		}
+
+		return RemoteConfigResult{URL: nil, Document: nil}
 	}
 
-	if fromCache {
+	remoteDocument, err := s.remoteConfigContents(ctx, remoteURL)
+	if err != nil {
+		switch {
+		case errors.Is(err, errFetchRemote):
+			s.logger.Warn("Unable to fetch remote configuration; using local config only")
+		case errors.Is(err, errParseRemote):
+			s.logger.Warn("Failed to parse remote configuration; using local config only")
+		default:
+			s.logger.Warn("Failed to process remote configuration; using local config only", "error", err)
+		}
+
+		return RemoteConfigResult{URL: remoteURL, Document: nil}
+	}
+
+	return RemoteConfigResult{URL: remoteURL, Document: remoteDocument}
+}
+
+func (s *Service) remoteConfigContents(ctx context.Context, remoteURL *url.URL) (interface{}, error) {
+	result, err := s.fetcher.Fetch(ctx, remoteURL)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errFetchRemote, err)
+	}
+
+	if result.FromCache {
 		s.logger.Warn("Using cached remote configuration")
 	}
 
-	remoteDocument, err := domainconfig.NormalizeYAML(remoteData)
+	remoteDocument, err := domainconfig.NormalizeYAML(result.Data)
 	if err != nil {
-		return nil, fmt.Errorf("parse remote configuration: %w", err)
+		return nil, fmt.Errorf("%w: %w", errParseRemote, err)
 	}
 
 	return remoteDocument, nil

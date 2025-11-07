@@ -6,3 +6,8 @@ const (
 
 	GeneratedFileName = ".golangci.generated.yml"
 )
+
+type FetchResult struct {
+	Data      []byte
+	FromCache bool
+}

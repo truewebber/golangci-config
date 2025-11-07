@@ -15,14 +15,17 @@ func NewLocator() *Locator {
 }
 
 func (l *Locator) Locate(args []string) (string, error) {
-	if path, provided, err := domainconfig.ParseConfigFlag(args); err != nil {
+	result, err := domainconfig.ParseConfigFlag(args)
+	if err != nil {
 		return "", fmt.Errorf("parse config flag: %w", err)
-	} else if provided {
-		return path, nil
+	}
+
+	if result.Provided {
+		return result.Path, nil
 	}
 
 	for _, candidate := range domainconfig.DefaultCandidates() {
-		if _, err := os.Stat(candidate); err == nil {
+		if _, statErr := os.Stat(candidate); statErr == nil {
 			return candidate, nil
 		}
 	}

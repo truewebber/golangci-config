@@ -40,6 +40,7 @@ func (t *ToolRunner) Run(ctx context.Context, args []string) error {
 		"github.com/golangci/golangci-lint/v2/cmd/golangci-lint",
 	}, args...)
 
+	//nolint:gosec // G204: commandArgs are controlled by the caller
 	cmd := exec.CommandContext(ctx, "go", commandArgs...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

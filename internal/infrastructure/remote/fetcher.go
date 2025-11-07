@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	domainconfig "github.com/truewebber/golangci-config/internal/domain/config"
 	"github.com/truewebber/golangci-config/internal/log"
 )
 
@@ -41,46 +43,45 @@ const (
 
 var errUnexpectedHTTPStatus = errors.New("unexpected HTTP status")
 
-func (f *HTTPFetcher) Fetch(u *url.URL) (data []byte, fromCache bool, retErr error) {
-	cachePath, etagPath, cacheErr := f.cachePaths(u)
+func (f *HTTPFetcher) Fetch(ctx context.Context, u *url.URL) (domainconfig.FetchResult, error) {
+	paths, cacheErr := f.cachePaths(u)
 	if cacheErr != nil {
-		return nil, false, fmt.Errorf("cache paths: %w", cacheErr)
+		return domainconfig.FetchResult{}, fmt.Errorf("cache paths: %w", cacheErr)
 	}
 
-	resp, fetchErr := f.fetchFromRemote(u, etagPath)
-
+	resp, fetchErr := f.fetchFromRemote(ctx, u, paths.EtagPath)
 	if fetchErr != nil {
 		f.logger.Warn("Failed to fetch from remote", "url", u, "err", fetchErr)
 	}
 
 	if fetchErr != nil || resp.notModified {
-		body, readErr := os.ReadFile(cachePath)
+		body, readErr := os.ReadFile(paths.CachePath)
 		if readErr != nil {
-			return nil, false, fmt.Errorf("read cache file: %w", readErr)
+			return domainconfig.FetchResult{}, fmt.Errorf("read cache file: %w", readErr)
 		}
 
-		return body, true, nil
+		return domainconfig.FetchResult{Data: body, FromCache: true}, nil
 	}
 
-	if err := f.writeNewCache(cachePath, etagPath, resp.body, resp.etag); err != nil {
+	if err := f.writeNewCache(paths.CachePath, paths.EtagPath, resp.body, resp.etag); err != nil {
 		f.logger.Warn("Failed to write new cache",
-			"cache_path", cachePath,
-			"etag_path", etagPath,
+			"cache_path", paths.CachePath,
+			"etag_path", paths.EtagPath,
 			"err", err,
 		)
 	}
 
-	return resp.body, false, nil
+	return domainconfig.FetchResult{Data: resp.body, FromCache: false}, nil
 }
 
 type responseBody struct {
-	body        []byte
 	etag        string
+	body        []byte
 	notModified bool
 }
 
-func (f *HTTPFetcher) fetchFromRemote(u *url.URL, etagPath string) (responseBody, error) {
-	req, reqErr := http.NewRequest(http.MethodGet, u.String(), http.NoBody)
+func (f *HTTPFetcher) fetchFromRemote(ctx context.Context, u *url.URL, etagPath string) (responseBody, error) {
+	req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), http.NoBody)
 	if reqErr != nil {
 		return responseBody{}, fmt.Errorf("new http request: %w", reqErr)
 	}
@@ -92,7 +93,11 @@ func (f *HTTPFetcher) fetchFromRemote(u *url.URL, etagPath string) (responseBody
 		return responseBody{}, fmt.Errorf("do request: %w", doErr)
 	}
 
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			f.logger.Warn("Failed to close response body", "err", closeErr)
+		}
+	}()
 
 	switch resp.StatusCode {
 	case http.StatusOK:
@@ -118,6 +123,7 @@ func (f *HTTPFetcher) fetchFromRemote(u *url.URL, etagPath string) (responseBody
 }
 
 func (f *HTTPFetcher) setEtagHeader(req *http.Request, etagPath string) {
+	//nolint:gosec // G304: etagPath is controlled by the fetcher
 	etag, err := os.ReadFile(etagPath)
 	if err != nil {
 		return
@@ -159,15 +165,20 @@ func (f *HTTPFetcher) ensureCacheDir() error {
 
 var errCacheDirectoryIsEmpty = errors.New("cache directory is empty")
 
-func (f *HTTPFetcher) cachePaths(u *url.URL) (cachePath, etagPath string, err error) {
+type CachePaths struct {
+	CachePath string
+	EtagPath  string
+}
+
+func (f *HTTPFetcher) cachePaths(u *url.URL) (CachePaths, error) {
 	if strings.TrimSpace(f.cacheDir) == "" {
-		return "", "", errCacheDirectoryIsEmpty
+		return CachePaths{}, errCacheDirectoryIsEmpty
 	}
 
 	hash := sha256.Sum256([]byte(u.String()))
 	name := hex.EncodeToString(hash[:])
-	cachePath = filepath.Join(f.cacheDir, name+".yml")
-	etagPath = filepath.Join(f.cacheDir, name+".etag")
+	cachePath := filepath.Join(f.cacheDir, name+".yml")
+	etagPath := filepath.Join(f.cacheDir, name+".etag")
 
-	return cachePath, etagPath, nil
+	return CachePaths{CachePath: cachePath, EtagPath: etagPath}, nil
 }

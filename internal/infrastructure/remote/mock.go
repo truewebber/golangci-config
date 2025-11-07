@@ -10,9 +10,11 @@
 package remote
 
 import (
+	context "context"
 	url "net/url"
 	reflect "reflect"
 
+	config "github.com/truewebber/golangci-config/internal/domain/config"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -41,17 +43,16 @@ func (m *MockRemoteFetcher) EXPECT() *MockRemoteFetcherMockRecorder {
 }
 
 // Fetch mocks base method.
-func (m *MockRemoteFetcher) Fetch(u *url.URL) ([]byte, bool, error) {
+func (m *MockRemoteFetcher) Fetch(ctx context.Context, u *url.URL) (config.FetchResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Fetch", u)
-	ret0, _ := ret[0].([]byte)
-	ret1, _ := ret[1].(bool)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
+	ret := m.ctrl.Call(m, "Fetch", ctx, u)
+	ret0, _ := ret[0].(config.FetchResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // Fetch indicates an expected call of Fetch.
-func (mr *MockRemoteFetcherMockRecorder) Fetch(u any) *gomock.Call {
+func (mr *MockRemoteFetcherMockRecorder) Fetch(ctx, u any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Fetch", reflect.TypeOf((*MockRemoteFetcher)(nil).Fetch), u)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Fetch", reflect.TypeOf((*MockRemoteFetcher)(nil).Fetch), ctx, u)
 }
