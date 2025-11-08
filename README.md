@@ -1,47 +1,43 @@
-# Golangci Wrapper
+# golangci-wrapper
 
-Go-based helper that generates a merged configuration for `golangci-lint` before running `golangci-lint run`. The wrapper expects you to keep the project-specific configuration locally and store the remote base configuration URL inside that file.
+A wrapper for `golangci-lint` that merges remote base configurations with local overrides, enabling centralized linting standards across multiple projects while allowing project-specific customizations.
 
-## Installation
+## Why?
 
-1. Install the wrapper (pick any version tag you maintain):
-   ```bash
-   go install github.com/truewebber/golangci-config/cmd/golangci-wrapper@latest
-   ```
-2. Ensure you have Go ≥ 1.25 installed. The wrapper uses `go tool github.com/golangci/golangci-lint/v2/cmd/golangci-lint`, so the linter is built on demand from source—no separate binary is required.
+Managing consistent `golangci-lint` configurations across multiple projects is tedious—you end up copying configs, dealing with drift, and struggling to keep everything in sync. This wrapper lets you store a shared base configuration remotely (e.g., in a company repo) and override it per-project. Local values always win, and everything is cached for offline use.
 
-## Local configuration layout
+## Install & Quick Start
 
-Create a local config file (default search order: `.golangci.local.yml`, `.golangci.local.yaml`, `.golangci.yml`, `.golangci.yaml`) and add a comment with the remote base configuration directive:
+```bash
+go install github.com/truewebber/golangci-config/cmd/golangci-wrapper@latest
+```
+
+Create `.golangci.local.yml` with a remote config directive:
 
 ```yaml
-// GOLANGCI_LINT_REMOTE_CONFIG: https://example.com/common/.golangci.base.yml
-
-run:
-  tests: false
+# GOLANGCI_LINT_REMOTE_CONFIG: https://example.com/common/.golangci.base.yml
 
 linters:
   enable:
     - gosec
 ```
 
-During execution the wrapper downloads the remote configuration, merges it with the local file (local values win), writes `.golangci.generated.yml` next to the local config, and passes that file to `golangci-lint`.
-
-If the directive is missing or the download fails, the wrapper warns and proceeds with the local configuration only. Remote files are cached in `~/.cache/golangci-wrapper` and reused when the network is unavailable.
-
-## Usage
+Then use it exactly like `golangci-lint`:
 
 ```bash
 golangci-wrapper run ./...
 golangci-wrapper run --fix
-golangci-wrapper run -c internal/config/.golangci.local.yml ./...
 ```
 
-The wrapper only strips `-c/--config` flags to inject the generated file; all other arguments are forwarded to `go tool … golangci-lint`.
+The wrapper automatically downloads the remote config, merges it with your local file, and passes the result to `golangci-lint`. 
 
-## Toolchain management
+**Requirements:** Go ≥ 1.25 and `golangci-lint` v2+ (the wrapper uses `go tool github.com/golangci/golangci-lint/v2/cmd/golangci-lint`—no separate binary needed).
 
-To pin the linter version in your repository, add a `tools/tools.go` file and keep it in sync with the wrapper:
+## Configuration
+
+The wrapper searches for config files in this order: `.golangci.local.yml`, `.golangci.local.yaml`, `.golangci.yml`, `.golangci.yaml`. If the remote directive is missing or download fails, it falls back to local-only. Remote configs are cached in `~/.cache/golangci-wrapper` with ETag support.
+
+To ensure `golangci-lint` is available via `go tool`, add it to your `go.mod`:
 
 ```go
 //go:build tools
@@ -49,8 +45,12 @@ To pin the linter version in your repository, add a `tools/tools.go` file and ke
 package tools
 
 import (
-	_ "github.com/golangci/golangci-lint/cmd/golangci-lint"
+	_ "github.com/golangci/golangci-lint/v2/cmd/golangci-lint"
 )
 ```
 
-Running `go mod tidy` then locks in the linter version the wrapper will compile when invoking `go tool`.
+Then run `go mod tidy` to lock the version.
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
