@@ -31,26 +31,35 @@ golangci-wrapper run --fix
 
 The wrapper automatically downloads the remote config, merges it with your local file, and passes the result to `golangci-lint`. 
 
-**Requirements:** Go ≥ 1.25 and `golangci-lint` v2+ (the wrapper uses `go tool github.com/golangci/golangci-lint/v2/cmd/golangci-lint`—no separate binary needed).
+**Requirements:** Go ≥ 1.25 and `golangci-lint` v2 (must be either in the `tool` section of your project's `go.mod` or available in PATH).
 
 ## Configuration
 
 The wrapper searches for config files in this order: `.golangci.local.yml`, `.golangci.local.yaml`, `.golangci.yml`, `.golangci.yaml`. If the remote directive is missing or download fails, it falls back to local-only. Remote configs are cached in `~/.cache/golangci-wrapper` with ETag support.
 
-To ensure `golangci-lint` is available via `go tool`, add it to your `go.mod`:
+### Using via `go tool`
+
+To use both the wrapper and `golangci-lint` via `go tool`, add them to the `tool` section in your `go.mod`:
 
 ```go
-//go:build tools
-
-package tools
-
-import (
-	_ "github.com/golangci/golangci-lint/v2/cmd/golangci-lint"
+tool (
+	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+	github.com/truewebber/golangci-config/cmd/golangci-wrapper
 )
 ```
 
-Then run `go mod tidy` to lock the version.
+Then run `go mod tidy` and use:
+
+```bash
+go tool github.com/truewebber/golangci-config/cmd/golangci-wrapper run ./...
+```
+
+The wrapper will automatically detect and use `golangci-lint` via `go tool` as well.
 
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
+
+---
+
+Powered by [truewebber](https://truewebber.com)
