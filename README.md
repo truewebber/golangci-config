@@ -1,4 +1,4 @@
-# golangci-wrapper
+# golangcix
 
 A wrapper for `golangci-lint` that merges remote base configurations with local overrides, enabling centralized linting standards across multiple projects while allowing project-specific customizations.
 
@@ -9,7 +9,7 @@ Managing consistent `golangci-lint` configurations across multiple projects is t
 ## Install & Quick Start
 
 ```bash
-go install github.com/truewebber/golangci-config/cmd/golangci-wrapper@latest
+go install github.com/truewebber/golangcix/cmd/golangcix@latest
 ```
 
 Create `.golangci.local.yml` with a remote config directive:
@@ -25,8 +25,8 @@ linters:
 Then use it exactly like `golangci-lint`:
 
 ```bash
-golangci-wrapper run ./...
-golangci-wrapper run --fix
+golangcix run ./...
+golangcix run --fix
 ```
 
 The wrapper automatically downloads the remote config, merges it with your local file, and passes the result to `golangci-lint`. 
@@ -35,7 +35,7 @@ The wrapper automatically downloads the remote config, merges it with your local
 
 ## Configuration
 
-The wrapper searches for config files in this order: `.golangci.local.yml`, `.golangci.local.yaml`, `.golangci.yml`, `.golangci.yaml`. If the remote directive is missing or download fails, it falls back to local-only. Remote configs are cached in `~/.cache/golangci-wrapper` with ETag support.
+The wrapper searches for config files in this order: `.golangci.local.yml`, `.golangci.local.yaml`, `.golangci.yml`, `.golangci.yaml`. If the remote directive is missing or download fails, it falls back to local-only. Remote configs are cached in `~/.cache/golangcix` with ETag support.
 
 ### Using via `go tool`
 
@@ -44,14 +44,14 @@ To use both the wrapper and `golangci-lint` via `go tool`, add them to the `tool
 ```go
 tool (
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
-	github.com/truewebber/golangci-config/cmd/golangci-wrapper
+	github.com/truewebber/golangcix/cmd/golangcix
 )
 ```
 
 Then run `go mod tidy` and use:
 
 ```bash
-go tool github.com/truewebber/golangci-config/cmd/golangci-wrapper run ./...
+go tool github.com/truewebber/golangcix/cmd/golangcix run ./...
 ```
 
 The wrapper will automatically detect and use `golangci-lint` via `go tool` as well.

@@ -7,15 +7,15 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/truewebber/golangci-config/internal/application"
-	configinfra "github.com/truewebber/golangci-config/internal/infrastructure/config"
-	"github.com/truewebber/golangci-config/internal/infrastructure/lint"
-	"github.com/truewebber/golangci-config/internal/infrastructure/remote"
-	"github.com/truewebber/golangci-config/internal/log"
+	"github.com/truewebber/golangcix/internal/application"
+	configinfra "github.com/truewebber/golangcix/internal/infrastructure/config"
+	"github.com/truewebber/golangcix/internal/infrastructure/lint"
+	"github.com/truewebber/golangcix/internal/infrastructure/remote"
+	"github.com/truewebber/golangcix/internal/log"
 )
 
 const (
-	defaultCacheDir             = ".cache/golangci-wrapper"
+	defaultCacheDir             = ".cache/golangcix"
 	remoteFetcherTimeoutSeconds = 15
 )
 
@@ -43,22 +43,22 @@ func main() {
 	runner := application.NewRunner(logger, locator, configService, linter)
 
 	if runErr := runner.Run(context.TODO(), args); runErr != nil {
-		logger.Error("golangci-wrapper failed", "error", runErr)
+		logger.Error("golangcix failed", "error", runErr)
 		os.Exit(1)
 	}
 }
 
 func printUsage(logger log.Logger) {
-	logger.Info("Usage: golangci-wrapper run [golangci-lint flags]\n")
+	logger.Info("Usage: golangcix run [golangci-lint flags]\n")
 	logger.Info("The wrapper looks for a local configuration file (.golangci.local.yml/.yaml or .golangci.yml/.yaml).")
 	logger.Info("If the file contains a directive in comments of the form:")
 	logger.Info("  # GOLANGCI_LINT_REMOTE_CONFIG: https://example.com/config.yml")
 	logger.Info("the remote configuration is downloaded, merged with the local one, and passed to golangci-lint.")
 	logger.Info("Without the directive the wrapper uses only the local configuration.\n")
 	logger.Info("Examples:")
-	logger.Info("  golangci-wrapper run")
-	logger.Info("  golangci-wrapper run ./...")
-	logger.Info("  golangci-wrapper run -c custom.yml ./...\n")
+	logger.Info("  golangcix run")
+	logger.Info("  golangcix run ./...")
+	logger.Info("  golangcix run -c custom.yml ./...\n")
 	logger.Info("Make sure golangci-lint is installed (via go tool or go install).")
 }
 

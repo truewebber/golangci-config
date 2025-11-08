@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/truewebber/golangci-config/internal/domain/config"
+	"github.com/truewebber/golangcix/internal/domain/config"
 )
 
 func TestExtractRemoteURL(t *testing.T) {

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	domainconfig "github.com/truewebber/golangci-config/internal/domain/config"
-	configinfra "github.com/truewebber/golangci-config/internal/infrastructure/config"
-	"github.com/truewebber/golangci-config/internal/infrastructure/remote"
+	domainconfig "github.com/truewebber/golangcix/internal/domain/config"
+	configinfra "github.com/truewebber/golangcix/internal/infrastructure/config"
+	"github.com/truewebber/golangcix/internal/infrastructure/remote"
 	"go.uber.org/mock/gomock"
 )
 

@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/truewebber/golangci-config/internal/domain/config"
+	"github.com/truewebber/golangcix/internal/domain/config"
 )
 
 func TestNormalizeYAML(t *testing.T) {

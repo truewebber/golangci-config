@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	domainconfig "github.com/truewebber/golangci-config/internal/domain/config"
+	domainconfig "github.com/truewebber/golangcix/internal/domain/config"
 )
 
 type Locator struct {

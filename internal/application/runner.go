@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	loggerpkg "github.com/truewebber/golangci-config/internal/log"
+	loggerpkg "github.com/truewebber/golangcix/internal/log"
 )
 
 //go:generate go run go.uber.org/mock/mockgen -source=runner.go -destination=mocks_test.go -package application_test

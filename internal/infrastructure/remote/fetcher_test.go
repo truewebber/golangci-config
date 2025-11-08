@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/truewebber/golangci-config/internal/infrastructure/remote"
+	"github.com/truewebber/golangcix/internal/infrastructure/remote"
 )
 
 const (

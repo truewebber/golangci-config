@@ -14,7 +14,7 @@ import (
 	url "net/url"
 	reflect "reflect"
 
-	config "github.com/truewebber/golangci-config/internal/domain/config"
+	config "github.com/truewebber/golangcix/internal/domain/config"
 	gomock "go.uber.org/mock/gomock"
 )
 

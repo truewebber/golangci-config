@@ -1,10 +1,10 @@
-module github.com/truewebber/golangci-config
+module github.com/truewebber/golangcix
 
 go 1.25
 
 tool (
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
-	github.com/truewebber/golangci-config/cmd/golangci-wrapper
+	github.com/truewebber/golangcix/cmd/golangcix
 )
 
 require (

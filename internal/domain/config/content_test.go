@@ -3,7 +3,7 @@ package config_test
 import (
 	"testing"
 
-	"github.com/truewebber/golangci-config/internal/domain/config"
+	"github.com/truewebber/golangcix/internal/domain/config"
 )
 
 func TestHasContent(t *testing.T) {

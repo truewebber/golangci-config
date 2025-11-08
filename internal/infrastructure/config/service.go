@@ -10,8 +10,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	domainconfig "github.com/truewebber/golangci-config/internal/domain/config"
-	"github.com/truewebber/golangci-config/internal/log"
+	domainconfig "github.com/truewebber/golangcix/internal/domain/config"
+	"github.com/truewebber/golangcix/internal/log"
 )
 
 var (

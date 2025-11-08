@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	configinfra "github.com/truewebber/golangci-config/internal/infrastructure/config"
+	configinfra "github.com/truewebber/golangcix/internal/infrastructure/config"
 )
 
 //nolint:paralleltest // Cannot use t.Parallel() with t.TempDir() and file operations

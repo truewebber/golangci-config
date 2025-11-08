@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/truewebber/golangci-config/internal/application"
+	"github.com/truewebber/golangcix/internal/application"
 	"go.uber.org/mock/gomock"
 )
 
